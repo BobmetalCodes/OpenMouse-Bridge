@@ -203,13 +203,13 @@ pub(crate) fn manual_report_access(
     Ok(access)
 }
 
+/// Why Bridge left the mouse alone: the web panel is driving it. This is the
+/// normal handover rather than a failure.
+pub const NATIVE_HID_OWNED: &str = "native HID is owned by an active WebSocket session";
+
 fn ensure_native_ownership() -> Result<()> {
     if crate::hid::client_session_active() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::WouldBlock,
-            "native HID is owned by an active WebSocket session",
-        )
-        .into());
+        return Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, NATIVE_HID_OWNED).into());
     }
     Ok(())
 }

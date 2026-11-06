@@ -11,6 +11,7 @@ use gpui_kit::component::{
 use gpui_kit::*;
 use openmouse_bridge::{
     BRIDGE_PORT, config,
+    drivers::NATIVE_HID_OWNED,
     platform::{self, TrayBatteryStyle},
     service::{BridgeSnapshot, KnownDeviceStatus, Notice},
     updater::{DownloadProgress, UpdateInfo, download_progress},
@@ -577,6 +578,8 @@ fn native_problem(snapshot: Option<&BridgeSnapshot>) -> Option<String> {
     snapshot
         .native_automation_error
         .as_ref()
+        // The web panel holding the mouse is the normal handover, not a problem.
+        .filter(|error| error.as_str() != NATIVE_HID_OWNED)
         .map(|error| format!("Native settings not applied: {error}"))
 }
 
@@ -1244,8 +1247,26 @@ impl Render for PanelView {
 mod tests {
     // Not `use super::*`: that pulls in GPUI's own `test` macro, which shadows
     // `#[test]`.
-    use super::{UpdateState, step_threshold, step_volume};
+    use super::{NATIVE_HID_OWNED, UpdateState, native_problem, step_threshold, step_volume};
     use crate::runtime::UpdateEvent;
+
+    #[test]
+    fn the_web_panel_holding_the_mouse_is_not_shown_as_a_problem() {
+        let mut snapshot = crate::gpui_shell::test_snapshot();
+        snapshot.native_automation_error = Some(NATIVE_HID_OWNED.to_owned());
+        assert_eq!(native_problem(Some(&snapshot)), None);
+
+        snapshot.native_automation_error = Some("the write failed".to_owned());
+        assert_eq!(
+            native_problem(Some(&snapshot)).as_deref(),
+            Some("Native settings not applied: the write failed")
+        );
+
+        // A restore still waiting is worth showing, whatever is holding it up.
+        snapshot.native_automation_error = Some(NATIVE_HID_OWNED.to_owned());
+        snapshot.pending_native_restores = 1;
+        assert!(native_problem(Some(&snapshot)).is_some());
+    }
 
     #[test]
     fn the_alert_level_steps_along_the_offered_list() {
