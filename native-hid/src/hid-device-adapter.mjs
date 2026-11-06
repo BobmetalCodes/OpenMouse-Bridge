@@ -244,6 +244,38 @@ export class HidDeviceAdapter {
   }
 }
 
+const RAZER_VENDOR_ID = 0x1532;
+
+/**
+ * Whether a mouse collection has to stay in the candidates. A Razer wireless
+ * receiver answers its control protocol only on the interface that declares
+ * the mouse (a DeathAdder V2 Pro's 1532:007d answers on interface 0 and echoes
+ * status 0x00 on the rest), and Linux opens a hidraw node without taking the
+ * cursor away from the system.
+ * @param {import("node-hid").Device} info
+ * @param {string} [platform]
+ */
+export function usesMouseCollectionForControl(info, platform = process.platform) {
+  return (
+    platform === "linux" &&
+    info.vendorId === RAZER_VENDOR_ID &&
+    info.usagePage === 1 &&
+    (info.usage === 1 || info.usage === 2)
+  );
+}
+
+/**
+ * Puts the interfaces that are only a mouse last, so that one is reached only
+ * when nothing else answers: a wired mouse answers on another interface, which
+ * leaves the one moving the cursor alone.
+ * @param {import("node-hid").Device[][]} groups
+ * @param {string} [platform]
+ */
+export function inControlOrder(groups, platform = process.platform) {
+  const onlyMouse = (infos) => infos.every((info) => usesMouseCollectionForControl(info, platform));
+  return [...groups.filter((infos) => !onlyMouse(infos)), ...groups.filter(onlyMouse)];
+}
+
 /**
  * Lists every HID *interface* for a vendor id, ready to be opened — one
  * HidDeviceAdapter per interface, merging any node-hid entries that split
@@ -258,6 +290,13 @@ export function candidateDevices(vendorId) {
     if (info.vendorId !== vendorId) continue;
     // Skip keyboard collections (macOS denies IOHIDDeviceOpen with privilege violation 0xE00002C1)
     if (info.usagePage === 1 && info.usage === 6) continue;
+    if (usesMouseCollectionForControl(info)) {
+      const key = `${info.productId}:${info.interface}`;
+      const group = groups.get(key);
+      if (group) group.push(info);
+      else groups.set(key, [info]);
+      continue;
+    }
     // Skip standard boot mouse collections (exclusive system cursor access 0xE00002C5, no vendor feature reports)
     if (info.usagePage === 1 && (info.usage === 1 || info.usage === 2)) continue;
     const key = `${info.productId}:${info.interface}`;
@@ -265,7 +304,7 @@ export function candidateDevices(vendorId) {
     if (group) group.push(info);
     else groups.set(key, [info]);
   }
-  return [...groups.values()].map((infos) => {
+  return inControlOrder([...groups.values()]).map((infos) => {
     // Several node-hid entries for one interface commonly share the same
     // underlying `path` (one physical device, listed once per top-level
     // collection its descriptor declares) — open each distinct path once.
