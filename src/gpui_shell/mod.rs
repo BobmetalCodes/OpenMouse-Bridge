@@ -55,6 +55,8 @@ fn open_panel(cx: &mut App, view: &Entity<PanelView>, has_tray: bool) -> Result<
     };
     let view = view.clone();
     let (handle, _) = open_window(options, cx, move |_, _| view)?;
+    #[cfg(target_os = "linux")]
+    crate::gpu_drivers::release();
     if has_tray {
         tray::attach(cx, handle);
     }

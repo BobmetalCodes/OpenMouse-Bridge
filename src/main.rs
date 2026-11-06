@@ -3,6 +3,8 @@
     windows_subsystem = "windows"
 )]
 
+#[cfg(target_os = "linux")]
+mod gpu_drivers;
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 mod gpui_shell;
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
@@ -37,6 +39,8 @@ use tokio::net::TcpListener;
 
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 fn main() {
+    #[cfg(target_os = "linux")]
+    gpu_drivers::limit();
     let log_guard = init_tracing();
     if let Err(error) = runtime::run() {
         tracing::error!(%error, "OpenMouse Bridge failed");
