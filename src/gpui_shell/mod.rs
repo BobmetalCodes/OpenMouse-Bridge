@@ -5,6 +5,8 @@
 //! which are polled on a timer. See docs/gpui-migration.md.
 
 mod ascii;
+#[cfg(target_os = "linux")]
+mod linux_tray;
 mod panel;
 mod theme;
 mod tray;
@@ -33,6 +35,32 @@ use crate::runtime::{
 /// most this long.
 const POLL: Duration = Duration::from_millis(200);
 
+/// Opens a window around the panel's view, which outlives it: where hiding
+/// closes the window, this is also how the panel comes back.
+fn open_panel(cx: &mut App, view: &Entity<PanelView>, has_tray: bool) -> Result<AnyWindowHandle> {
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+            None,
+            size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT)),
+            cx,
+        ))),
+        titlebar: None,
+        kind: WindowKind::PopUp,
+        is_resizable: false,
+        is_minimizable: cfg!(target_os = "linux"),
+        // Ties the window to the launcher entry, for its dock icon and so that
+        // Wayland can be asked to raise it.
+        app_id: cfg!(target_os = "linux").then(|| "io.openmouse.bridge".to_owned()),
+        ..Default::default()
+    };
+    let view = view.clone();
+    let (handle, _) = open_window(options, cx, move |_, _| view)?;
+    if has_tray {
+        tray::attach(cx, handle);
+    }
+    Ok(handle)
+}
+
 pub fn run() -> Result<()> {
     tracing::info!("starting the GPUI shell");
     let (notice_tx, notices) = mpsc::channel();
@@ -53,56 +81,55 @@ pub fn run() -> Result<()> {
             theme::apply(cx);
             crate::runtime::configure_tray_only_application();
 
-            let options = WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                    None,
-                    size(px(WINDOW_WIDTH), px(WINDOW_HEIGHT)),
-                    cx,
-                ))),
-                titlebar: None,
-                kind: WindowKind::PopUp,
-                is_resizable: false,
-                is_minimizable: false,
-                ..Default::default()
-            };
             let view_exit = app_exit.clone();
-            let (handle, view) = open_window(options, cx, move |_, cx| {
-                cx.new(|cx| {
-                    PanelView::new(
-                        CoreLinks {
-                            snapshots,
-                            commands,
-                            updates,
-                            notices,
-                            panel_requests,
-                        },
-                        view_exit,
-                        show_panel,
-                        cx.focus_handle(),
-                    )
-                })
-            })
-            .expect("failed to open the Bridge panel");
+            let panel = cx.new(|cx| {
+                PanelView::new(
+                    CoreLinks {
+                        snapshots,
+                        commands,
+                        updates,
+                        notices,
+                        panel_requests,
+                    },
+                    view_exit,
+                    show_panel,
+                    cx.focus_handle(),
+                )
+            });
 
             // The panel opens at launch on a first run, and when asked to by the
             // environment.
             let show_panel =
                 show_panel || std::env::var_os("OPENMOUSE_BRIDGE_SHOW_WINDOW").is_some();
-            let (tray_commands, mut tray_handle) = match tray::install(cx, handle) {
+            let (tray_commands, mut tray_handle) = match tray::install() {
                 Some((commands, tray)) => (Some(commands), Some(tray)),
                 None => (None, None),
             };
-            if !show_panel && tray_commands.is_some() {
-                let _ = cx.update_window(handle, |_, window, _| tray::hide(window));
-            } else {
-                // Shown at launch (the first run): beside the tray, not mid-screen.
-                if tray_commands.is_some() {
-                    let _ = cx.update_window(handle, |_, window, _| tray::place(window, None));
-                }
-                cx.activate(true);
+            let has_tray = tray_commands.is_some();
+            // Where hiding closes the window, the app has to outlive it. Without
+            // a tray closing still quits, as there is no way back to the panel.
+            if has_tray && tray::hiding_closes() {
+                cx.set_quit_mode(QuitMode::Explicit);
             }
+            let mut window = if !show_panel && has_tray && tray::hiding_closes() {
+                tray::mark_hidden();
+                None
+            } else {
+                let handle =
+                    open_panel(cx, &panel, has_tray).expect("failed to open the Bridge panel");
+                if !show_panel && has_tray {
+                    let _ = cx.update_window(handle, |_, window, _| tray::hide(window));
+                } else {
+                    // Shown at launch (the first run): beside the tray, not mid-screen.
+                    if has_tray {
+                        let _ = cx.update_window(handle, |_, window, _| tray::place(window, None));
+                    }
+                    cx.activate(true);
+                }
+                Some(handle)
+            };
 
-            let view = view.downgrade();
+            let view = panel.downgrade();
             cx.spawn(async move |cx| {
                 let mut wait = POLL;
                 let mut last_anchor: Option<tray::Anchor> = None;
@@ -165,7 +192,30 @@ pub fn run() -> Result<()> {
                     if show {
                         tracing::debug!(panel_wanted, "showing the panel");
                         let anchor = last_anchor;
-                        let _ = cx.update_window(handle, |_, window, _| tray::show(window, anchor));
+                        // Where hiding closes the window, a new one is the only
+                        // sure way to the front: Wayland cannot restore a
+                        // minimized window, and rarely grants a raise.
+                        if tray::hiding_closes()
+                            && tray::can_hide()
+                            && let Some(handle) = window.take()
+                        {
+                            let _ = cx.update_window(handle, |_, window, _| tray::hide(window));
+                        }
+                        let shown = window.is_some_and(|handle| {
+                            cx.update_window(handle, |_, window, _| tray::show(window, anchor))
+                                .is_ok()
+                        });
+                        if !shown {
+                            match cx.update(|cx| open_panel(cx, &panel, has_tray)) {
+                                Ok(handle) => {
+                                    window = Some(handle);
+                                    tray::mark_shown();
+                                }
+                                Err(error) => {
+                                    tracing::warn!(%error, "Could not open the panel");
+                                }
+                            }
+                        }
                     }
                     for command in tray_requests {
                         match command {

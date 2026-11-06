@@ -10,7 +10,7 @@
 
 GPUI is the only window: there is no other shell. CI builds macOS, Linux, and
 Windows artifacts. Windows tray and panel behavior still need testing on a
-Windows desktop; Linux has no tray icon yet.
+Windows desktop.
 
 - [x] A panel in Desktop's dark look with its ASCII background: Home, Settings
       and a Bridge info page, opening beside the tray icon
@@ -26,7 +26,7 @@ Windows desktop; Linux has no tray icon yet.
 - [x] Windows: build and smoke test a per-user installer in CI
 - [ ] Windows: run the tray app on a desktop
 - [x] Linux: build and verify the AppImage in CI
-- [ ] Linux: add a tray icon
+- [x] Linux: a tray icon, on hosts that show StatusNotifierItem icons
 - [ ] The in-app updater with `latest.json`, replacing the zip-swap one
 - [ ] Moving installs of earlier versions across
 
@@ -103,10 +103,15 @@ On Linux, install the system libraries for the window first (Ubuntu 22.04 or
 sudo apt-get update && sudo apt-get install -y build-essential clang cmake pkg-config libudev-dev libssl-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libvulkan-dev libgl1-mesa-dev libfontconfig-dev libfreetype-dev libasound2-dev
 ```
 
-Linux notes: there is no tray icon yet, so the panel is an ordinary window and
-its close button quits; the overlay banner and foreground detection need X11
-(on Wayland the banner falls back to a system notification and `foreground` is
-always false), and the chime needs `paplay` or `aplay`. With no
+Linux notes: the tray icon is a StatusNotifierItem, shown by KDE and by GNOME
+with an AppIndicator extension such as Ubuntu's. The host decides what a click
+does: Ubuntu's opens the menu on a left click and the panel on a double-click.
+With no host to show it, the panel is an ordinary window and its close button
+quits. Wayland cannot hide a window, so hiding closes it and showing opens a new
+one. The icon shows the battery as a mouse filling up, whichever tray icon style
+is chosen. The overlay banner and foreground detection need X11 (on Wayland the
+banner falls back to a system notification and `foreground` is always false), and
+the chime needs `paplay` or `aplay`. With no
 `WAYLAND_DISPLAY` or `DISPLAY` (servers, SSH sessions), or with
 `OPENMOUSE_BRIDGE_HEADLESS=1` / `--headless`, Bridge skips the window and serves
 its HTTP API, HID, and game profiles headless (Ctrl-C stops it). Startup at
@@ -274,7 +279,8 @@ buttons are settings and close):
 
 Clicking the tray icon (a left click, a double-click, or on macOS a right click)
 opens the panel beside it: centred under the icon below the menu bar on macOS,
-above a bottom taskbar on Windows. Closing it, or pressing Escape, hides it to
+above a bottom taskbar on Windows; on Linux the desktop places it and a minimize
+button sends it to the dock. Closing it, or pressing Escape, hides it to
 the tray and Bridge keeps running; Quit stops the process. The first launch
 opens the panel and later launches start hidden (`OPENMOUSE_BRIDGE_SHOW_WINDOW=1`
 opens it anyway, and `OPENMOUSE_BRIDGE_START_VIEW=settings|info` opens straight

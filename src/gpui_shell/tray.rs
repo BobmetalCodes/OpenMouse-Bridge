@@ -1,15 +1,16 @@
 //! The tray icon for the GPUI shell: closing the panel hides it, a click on the
 //! icon brings it back, and the menu offers Open / Restart / Quit.
 //!
-//! macOS and Windows only for now. Linux has no tray icon yet; there the panel
-//! is a plain window and closing it quits.
+//! On Linux the icon is a StatusNotifierItem (see `linux_tray`), and hiding
+//! closes the window, because Wayland has no way to hide one: the shell opens a
+//! new one around the same view to bring it back. With no tray host to show the
+//! icon, the panel is a plain window and closing it quits.
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     mpsc,
 };
 
-#[cfg(any(target_os = "macos", windows))]
 use gpui_kit::AppContext as _;
 use gpui_kit::{AnyWindowHandle, App, Window};
 
@@ -33,6 +34,8 @@ pub struct Anchor {
 pub struct TrayHandle {
     #[cfg(any(target_os = "macos", windows))]
     icon: tray_icon::TrayIcon,
+    #[cfg(target_os = "linux")]
+    indicator: ksni::blocking::Handle<super::linux_tray::Indicator>,
     shown: Option<TrayBattery>,
 }
 
@@ -63,6 +66,18 @@ impl TrayHandle {
                 return;
             }
         }
+        #[cfg(target_os = "linux")]
+        {
+            let next = battery.clone();
+            if self
+                .indicator
+                .update(move |indicator| indicator.set_battery(next))
+                .is_none()
+            {
+                tracing::warn!("Could not update the tray icon: its service stopped");
+                return;
+            }
+        }
         self.shown = battery;
     }
 
@@ -84,12 +99,11 @@ impl TrayHandle {
 #[derive(Debug)]
 pub enum Command {
     /// Show the panel, beside the icon when the icon was clicked.
-    #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
     Show(Option<Anchor>),
-    // Only the Windows tray has a menu to send these from.
-    #[cfg_attr(not(windows), allow(dead_code))]
+    // The macOS tray has no menu to send these from.
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     Restart,
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     Quit,
 }
 
@@ -307,7 +321,11 @@ mod platform {
 
     use super::Anchor;
 
-    pub fn hide_window(_window: &Window) {}
+    /// Wayland cannot hide a window, so hiding closes it. The app stays up with
+    /// no windows (`QuitMode::Explicit`).
+    pub fn hide_window(window: &mut Window) {
+        window.remove_window();
+    }
     pub fn show_window(_window: &mut Window) {}
     pub fn place_near_tray(_window: &Window, _anchor: Option<Anchor>) {}
 }
@@ -316,6 +334,9 @@ mod platform {
 /// repaints it. Stays true where there is no tray to hide it to.
 static VISIBLE: AtomicBool = AtomicBool::new(true);
 
+/// Whether a tray host accepted the Linux icon, which is only known at runtime.
+static LINUX_TRAY: AtomicBool = AtomicBool::new(false);
+
 pub fn is_visible() -> bool {
     VISIBLE.load(Ordering::Relaxed)
 }
@@ -323,13 +344,29 @@ pub fn is_visible() -> bool {
 /// Whether closing the panel can hide it to a tray icon; where it cannot, the
 /// close button quits.
 pub fn can_hide() -> bool {
-    cfg!(any(target_os = "macos", windows))
+    cfg!(any(target_os = "macos", windows)) || LINUX_TRAY.load(Ordering::Relaxed)
 }
 
-pub fn hide(window: &Window) {
+/// Whether hiding closes the window, so that it has to be opened again to come
+/// back; elsewhere the same window is hidden and shown.
+pub fn hiding_closes() -> bool {
+    cfg!(target_os = "linux")
+}
+
+pub fn hide(window: &mut Window) {
     platform::hide_window(window);
-    #[cfg(any(target_os = "macos", windows))]
+    mark_hidden();
+}
+
+/// Records that the panel is off screen without touching a window, for a start
+/// in the tray where hiding closes: no window is opened in the first place.
+pub fn mark_hidden() {
     VISIBLE.store(false, Ordering::Relaxed);
+}
+
+/// Records that a new window has put the panel back on screen.
+pub fn mark_shown() {
+    VISIBLE.store(true, Ordering::Relaxed);
 }
 
 /// Moves the panel beside the tray icon (see [`Anchor`]); without an anchor,
@@ -374,14 +411,22 @@ fn build_icon() -> Option<tray_icon::TrayIcon> {
     builder.build().ok()
 }
 
-/// Creates the tray icon and makes closing `window` hide it. Returns the
-/// channel its clicks and menu items arrive on and the icon itself, or `None`
-/// when there is no tray (then closing the window still quits).
+/// Makes a close request for `window` hide it, once there is a tray to hide it
+/// to. Every window the panel opens needs this.
+pub fn attach(cx: &mut App, window: AnyWindowHandle) {
+    let _ = cx.update_window(window, |_, window, cx| {
+        window.on_window_should_close(cx, |window, _| {
+            hide(window);
+            false
+        });
+    });
+}
+
+/// Creates the tray icon. Returns the channel its clicks and menu items arrive
+/// on and the icon itself, or `None` when there is no tray (then closing the
+/// window still quits).
 #[cfg(any(target_os = "macos", windows))]
-pub fn install(
-    cx: &mut App,
-    window: AnyWindowHandle,
-) -> Option<(mpsc::Receiver<Command>, TrayHandle)> {
+pub fn install() -> Option<(mpsc::Receiver<Command>, TrayHandle)> {
     #[cfg(windows)]
     use tray_icon::menu::MenuEvent;
     use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent};
@@ -446,12 +491,6 @@ pub fn install(
         }
     }));
 
-    let _ = cx.update_window(window, |_, window, cx| {
-        window.on_window_should_close(cx, |window, _| {
-            hide(window);
-            false
-        });
-    });
     Some((
         receiver,
         TrayHandle {
@@ -461,10 +500,18 @@ pub fn install(
     ))
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
-pub fn install(
-    _cx: &mut App,
-    _window: AnyWindowHandle,
-) -> Option<(mpsc::Receiver<Command>, TrayHandle)> {
-    None
+/// See the macOS and Windows `install`. The icon's service runs on its own
+/// thread and only queues commands for the poll loop in `run`.
+#[cfg(target_os = "linux")]
+pub fn install() -> Option<(mpsc::Receiver<Command>, TrayHandle)> {
+    let (sender, receiver) = mpsc::channel();
+    let indicator = super::linux_tray::spawn(sender)?;
+    LINUX_TRAY.store(true, Ordering::Relaxed);
+    Some((
+        receiver,
+        TrayHandle {
+            indicator,
+            shown: None,
+        },
+    ))
 }

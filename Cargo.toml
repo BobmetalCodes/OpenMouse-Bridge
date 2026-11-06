@@ -41,7 +41,7 @@ vello_cpu = { version = "0.1", default-features = false, features = ["std", "u8_
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 # No default features: they link libxdo (via muda) for menu items Bridge never
-# uses. Linux has no tray yet, so this is not built there.
+# uses. Linux has its own tray through ksni, so this is not built there.
 tray-icon = { version = "0.24.2", default-features = false }
 # The native window behind a GPUI window, to hide just the panel to the tray.
 raw-window-handle = "0.6"
@@ -52,6 +52,8 @@ raw-window-handle = "0.6"
 x11rb = "0.13"
 # Virtual keyboard and mouse for the button listener (/dev/uinput).
 libc = "0.2"
+# The tray icon: StatusNotifierItem over D-Bus, shown by AppIndicator hosts.
+ksni = { version = "0.3.7", features = ["blocking"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

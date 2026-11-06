@@ -739,6 +739,17 @@ impl PanelView {
                     })),
             );
         }
+        // A Linux window can go to the dock as well as to the tray.
+        if cfg!(target_os = "linux") {
+            bar = bar.child(
+                Button::new("minimize")
+                    .ghost()
+                    .compact()
+                    .icon(IconName::WindowMinimize)
+                    .tooltip("Minimize")
+                    .on_click(cx.listener(|_, _, window, _| window.minimize_window())),
+            );
+        }
         bar.child(
             Button::new("close")
                 .ghost()
@@ -831,9 +842,10 @@ impl PanelView {
             .child(self.title_bar("OpenMouse Bridge", false, true, accent, muted, cx))
             .child(details);
         if self.first_run_hint {
-            content = content.child(div().text_xs().text_color(muted).child(
-                "Bridge keeps running in the tray. Click its icon to open this panel again.",
-            ));
+            content =
+                content.child(div().text_xs().text_color(muted).child(
+                    "Bridge keeps running in the tray. Use its icon to open this panel again.",
+                ));
         }
         if let Some(problem) = native_problem(snapshot) {
             content = content.child(div().text_xs().text_color(cx.theme().danger).child(problem));
