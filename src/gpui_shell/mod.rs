@@ -4,7 +4,6 @@
 //! and hands this module snapshot, update, notice and panel-request channels,
 //! which are polled on a timer. See docs/gpui-migration.md.
 
-mod ascii;
 #[cfg(target_os = "linux")]
 mod linux_tray;
 mod panel;
@@ -85,6 +84,7 @@ pub fn run() -> Result<()> {
 
             let view_exit = app_exit.clone();
             let panel = cx.new(|cx| {
+                let focus = cx.focus_handle();
                 PanelView::new(
                     CoreLinks {
                         snapshots,
@@ -95,7 +95,8 @@ pub fn run() -> Result<()> {
                     },
                     view_exit,
                     show_panel,
-                    cx.focus_handle(),
+                    focus,
+                    cx,
                 )
             });
 

@@ -12,8 +12,8 @@ GPUI is the only window: there is no other shell. CI builds macOS, Linux, and
 Windows artifacts. Windows tray and panel behavior still need testing on a
 Windows desktop.
 
-- [x] A panel in Desktop's dark look with its ASCII background: Home, Settings
-      and a Bridge info page, opening beside the tray icon
+- [x] A panel in the dark look of the earlier betas: Home, Settings and a Bridge
+      info page, opening beside the tray icon
 - [x] The tray icon shows the connected mouse's battery
 - [x] Remembered mice (`devices.json`), found by scanning the HID bus every 5
       seconds
@@ -264,20 +264,21 @@ control panel. A selected profile is not proof that a hardware write succeeded.
 
 ## Tray panel
 
-The panel is a small borderless GPUI window in OpenMouse's dark look: near-black
-surfaces, the green accent, and a field of ASCII characters behind it. It has
-three views, all under the same title bar (drag the title to move it; the
-buttons are settings and close):
+The panel is a small borderless GPUI window in the dark look of the earlier
+betas: near-black surfaces, the green accent, and DM Sans. It has three views,
+all under the same title bar (drag the title to move it; the buttons are settings,
+minimize on Linux, and close):
 
-- **Home** lists the service, the active profile ("Default" unless a game's
-  profile is active), and every mouse Bridge has seen, with its battery and DPI
-  while it is plugged in or when it was last seen. An update card appears when
-  one is available, and a note on the first launch says the app lives in the
-  tray. A failed native write is shown under the card in red.
-- **Settings** has run on start, hybrid mode, the tray icon style (battery or
-  number), the low-battery alert level, notification sound and volume, update
-  automatically and check for updates, a test notification, open logs, and a
-  link to the info page.
+- **Home** has a status card with the connected mouse and its battery and DPI, a
+  row with whether the service is ready and the control panel connected, the
+  active profile ("Default" unless a game's profile is active), any other mouse
+  Bridge has seen and when, and a button to open the control panel. An update card
+  appears when one is available, and a note on the first launch says the app lives
+  in the tray. A failed native write is shown in red.
+- **Settings** has launch at login, hybrid mode, the tray icon style (except on
+  Linux, where the icon is always the mouse), the low-battery alert level,
+  notification sound and volume, and a test notification, then the version. The
+  footer has open logs, a link to the info page, and quit.
 - **Info** shows the version, platform, address, uptime, whether the control
   panel is connected, the device mode, and the config and log paths.
 

@@ -119,9 +119,9 @@ pub fn run() -> Result<()> {
     crate::gpui_shell::run()
 }
 
-pub(crate) const WINDOW_WIDTH: f32 = 360.0;
+pub(crate) const WINDOW_WIDTH: f32 = 440.0;
 
-pub(crate) const WINDOW_HEIGHT: f32 = 280.0;
+pub(crate) const WINDOW_HEIGHT: f32 = 356.0;
 
 /// Glow/winit often tear down after Windows hibernate. If the tray loop ends
 /// without an Exit or in-app update, spawn a replacement (issue #16).
@@ -134,14 +134,6 @@ const GUI_STABLE_AFTER: Duration = Duration::from_secs(30);
 const MAX_QUICK_RELAUNCHES: u32 = 5;
 
 pub(crate) const RELAUNCH_DELAY: Duration = Duration::from_secs(2);
-
-pub(crate) fn service_label(snapshot: Option<&BridgeSnapshot>) -> &'static str {
-    if snapshot.is_some() {
-        "Bridge service ready"
-    } else {
-        "Starting Bridge…"
-    }
-}
 
 pub(crate) enum BridgeCommand {
     SetBatteryThreshold(u8),

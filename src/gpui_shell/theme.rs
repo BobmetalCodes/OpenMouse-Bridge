@@ -1,14 +1,29 @@
-//! The Matt dark palette from OpenMouse Desktop (`gpui/src/theme.rs` there),
-//! trimmed to what Bridge needs for now: the dark shell with the green accent.
-//! Theme choice, vibrancy and the wallpaper-derived accent are not ported.
+//! The panel's look: near-black surfaces, the green accent and DM Sans, matching
+//! the panel of the earlier Bridge betas.
+
+use std::borrow::Cow;
 
 use gpui_kit::component::{Theme, ThemeMode};
-use gpui_kit::{App, Hsla};
+use gpui_kit::{App, Hsla, px};
 
-/// Default accent `#5dde89`.
+const FONT: &[u8] = include_bytes!("../../assets/fonts/DMSans-Variable.ttf");
+
+/// The title bar's strip.
+pub const CHROME: u32 = 0x08090a;
+pub const SURFACE: u32 = 0x141618;
+pub const DIVIDER: u32 = 0x262a2d;
+/// The top of a card's gradient.
+pub const CARD_TOP: u32 = 0x1c1e20;
+/// The top of the status card's gradient, with a green tint.
+pub const LIT_CARD_TOP: u32 = 0x1c2520;
+
+const BACKGROUND: (u8, u8, u8) = (12, 13, 15);
+const LINE: (u8, u8, u8) = (38, 42, 45);
+const TEXT: (u8, u8, u8) = (238, 240, 242);
+const MUTED: (u8, u8, u8) = (170, 176, 183);
 const ACCENT: (u8, u8, u8) = (93, 222, 137);
-/// Text on the accent, from Desktop's `readable_ink` for a light accent.
-const ACCENT_INK: (u8, u8, u8) = (16, 16, 18);
+const ACCENT_INK: (u8, u8, u8) = (7, 22, 14);
+const DANGER: (u8, u8, u8) = (255, 107, 107);
 
 fn to_hsla(rgb: (u8, u8, u8)) -> Hsla {
     let (r, g, b) = (
@@ -47,15 +62,22 @@ fn to_hsla(rgb: (u8, u8, u8)) -> Hsla {
 /// Paints the dark shell onto the live theme.
 pub fn apply(cx: &mut App) {
     Theme::change(ThemeMode::Dark, None, cx);
-    let background = to_hsla((13, 13, 15)); // --sidebar #0d0d0f
-    let border = to_hsla((41, 41, 45)); // --line #29292d
-    let muted = to_hsla((133, 133, 138)); // --muted #85858a
-    let muted_foreground = to_hsla((119, 119, 124)); // --faint #77777c
-    let foreground = to_hsla((247, 247, 247)); // --text #f7f7f7
+    if let Err(error) = cx.text_system().add_fonts(vec![Cow::Borrowed(FONT)]) {
+        tracing::warn!(%error, "Could not load the panel's font");
+    }
+    let background = to_hsla(BACKGROUND);
+    let border = to_hsla(LINE);
+    let muted = to_hsla(MUTED);
+    let muted_foreground = to_hsla(MUTED);
+    let foreground = to_hsla(TEXT);
     let accent = to_hsla(ACCENT);
     let accent_ink = to_hsla(ACCENT_INK);
+    let danger = to_hsla(DANGER);
     Theme::update(cx, |theme| {
+        theme.font_family = "DM Sans".into();
+        theme.font_size = px(16.);
         let c = &mut theme.colors;
+        c.danger = danger;
         c.background = background;
         c.foreground = foreground;
         c.muted = muted;
