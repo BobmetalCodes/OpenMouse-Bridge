@@ -227,6 +227,12 @@ impl GameDetector {
             .collect()
     }
 
+    /// The process scan from the last [`Self::detect`].
+    #[cfg(target_os = "linux")]
+    pub fn system(&self) -> &System {
+        &self.system
+    }
+
     pub fn detect(&mut self, games: &[GameConfig]) -> Vec<String> {
         self.system.refresh_processes_specifics(
             ProcessesToUpdate::All,

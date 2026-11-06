@@ -1518,6 +1518,9 @@ impl BridgeService {
                     &local_applications,
                     &processes,
                 ));
+                #[cfg(target_os = "linux")]
+                let running = applications::applications_in(detector.system());
+                #[cfg(not(target_os = "linux"))]
                 let running = applications::visible_applications();
                 let applications = profile_applications(&running, &games, &local_applications);
                 // Icon extraction can be disabled by callers that never serve

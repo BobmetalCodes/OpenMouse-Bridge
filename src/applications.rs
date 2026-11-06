@@ -304,13 +304,19 @@ mod imp {
     /// entry reports `foreground: false`, so game-profile fallback still
     /// works but focus matching does not.
     pub fn visible_applications() -> Vec<ApplicationInfo> {
-        let foreground_pid = active_window_pid();
         let mut system = System::new();
         system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
             ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
         );
+        applications_in(&system)
+    }
+
+    /// [`visible_applications`] from a scan the caller already made, which saves
+    /// going through every process twice on each poll.
+    pub fn applications_in(system: &System) -> Vec<ApplicationInfo> {
+        let foreground_pid = active_window_pid();
         let mut applications = BTreeMap::new();
         for process in system.processes().values() {
             let Some(path) = process
@@ -418,6 +424,8 @@ mod imp {
     }
 }
 
+#[cfg(target_os = "linux")]
+pub use imp::applications_in;
 pub use imp::{application_icon, visible_applications};
 
 #[cfg(test)]
