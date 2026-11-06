@@ -18,6 +18,11 @@ use sha2::{Digest, Sha256};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
+/// Off in this fork: the updater follows the upstream repository's releases, so
+/// an update would replace this build with one that lacks the fork's changes.
+/// To turn it back on, point `LATEST_RELEASE_URL` at releases of the fork.
+pub const UPDATES_ENABLED: bool = false;
+
 const LATEST_RELEASE_URL: &str =
     "https://api.github.com/repos/OpenMouse-Project/OpenMouse-Bridge/releases/latest";
 const UPDATE_URL_ENV: &str = "OPENMOUSE_BRIDGE_UPDATE_API_URL";

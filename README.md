@@ -176,6 +176,10 @@ Bridges do not implement the local-target endpoints.
 
 ## Updates
 
+Updates are turned off in this fork (`UPDATES_ENABLED` in `src/updater.rs`),
+because the updater follows the upstream repository's releases and would replace
+the fork's build. What follows describes the updater when it is on.
+
 The tray panel can check for a stable Bridge release on demand. Automatic
 updates are opt-in and use the same stable-release channel. Bridge downloads
 the platform archive and its published SHA-256 checksum, verifies the archive,

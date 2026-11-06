@@ -14,7 +14,7 @@ use openmouse_bridge::{
     drivers::NATIVE_HID_OWNED,
     platform::{self, TrayBatteryStyle},
     service::{BridgeSnapshot, KnownDeviceStatus, Notice},
-    updater::{DownloadProgress, UpdateInfo, download_progress},
+    updater::{DownloadProgress, UPDATES_ENABLED, UpdateInfo, download_progress},
 };
 use tokio::sync::mpsc as tokio_mpsc;
 
@@ -68,7 +68,9 @@ impl View {
     fn base_height(self) -> f32 {
         match self {
             View::Home => WINDOW_HEIGHT,
-            View::Settings => 600.0,
+            View::Settings if UPDATES_ENABLED => 600.0,
+            // Without the updates card.
+            View::Settings => 506.0,
             View::Info => 380.0,
         }
     }
@@ -1093,7 +1095,10 @@ impl PanelView {
         if let Some(text) = self.update.text(self.progress) {
             updates = updates.child(div().text_xs().text_color(muted).child(text.clone()));
         }
-        body = body.child(updates).child(
+        if UPDATES_ENABLED {
+            body = body.child(updates);
+        }
+        body = body.child(
             card(line, fill)
                 .child(
                     Button::new("test-notification")

@@ -386,7 +386,9 @@ fn run_server(
         let command_handler = tokio::spawn(async move {
             // A stub install can't run its HID helper yet; finishing it comes
             // before any ordinary update check.
-            if updater::is_stub_install() {
+            if !updater::UPDATES_ENABLED {
+                tracing::debug!("updates are disabled in this build");
+            } else if updater::is_stub_install() {
                 tokio::spawn(finish_stub_install(update_events.clone()));
             } else if automatic_updates {
                 check_for_updates(true, &update_events).await;
@@ -479,6 +481,9 @@ fn run_server(
 }
 
 async fn check_for_updates(install_automatically: bool, events: &SyncSender<UpdateEvent>) {
+    if !updater::UPDATES_ENABLED {
+        return;
+    }
     let _ = events.try_send(UpdateEvent::Checking);
     match updater::check_for_update().await {
         Ok(Some(update)) if install_automatically => install_update(update, events).await,
@@ -525,6 +530,9 @@ async fn finish_stub_install(events: SyncSender<UpdateEvent>) {
 }
 
 async fn install_update(update: UpdateInfo, events: &SyncSender<UpdateEvent>) {
+    if !updater::UPDATES_ENABLED {
+        return;
+    }
     let version = update.version.clone();
     let _ = events.try_send(UpdateEvent::Downloading(version.clone()));
     match updater::download_and_stage(&update).await {
