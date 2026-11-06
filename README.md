@@ -6,6 +6,31 @@
 > [docs/gpui-migration.md](docs/gpui-migration.md) for the plan and what has and
 > has not been checked.
 
+## About this fork
+
+A personal fork of
+[OpenMouse-Project/OpenMouse-Bridge](https://github.com/OpenMouse-Project/OpenMouse-Bridge),
+used on Ubuntu 24.04 with GNOME on Wayland and a Razer DeathAdder V2 Pro. Upstream's
+Linux build has no tray icon, and this adds:
+
+- A tray icon, with a mouse that fills up to show the battery, and a panel that
+  hides to it. Wayland cannot hide a window, so hiding closes it and showing opens
+  a new one.
+- Reading Razer mice through a wireless receiver, and packaging the `HID_hidraw`
+  module that the helper needs on Linux.
+- Following a mouse as it moves between its cable and receiver, with the tray
+  showing the newest reading.
+- Loading only the primary GPU's driver, and scanning processes once per poll.
+- On the `panel-restyle` branch, the look of the earlier betas.
+
+Updates are off, so upstream's releases cannot replace this build. Only Linux has
+been run: the changes also touch code shared with Windows and macOS, which have not
+been built. Upstream's newer commits are merged only when needed.
+
+**Known issue:** after a while on its receiver, the DeathAdder sometimes does not
+appear on USB when its cable is plugged in, even with Bridge not running. Flipping
+the switch on the underside brings it back without replugging.
+
 ## Where it stands
 
 GPUI is the only window: there is no other shell. CI builds macOS, Linux, and
@@ -15,7 +40,7 @@ Windows desktop.
 - [x] A panel in the dark look of the earlier betas: Home, Settings and a Bridge
       info page, opening beside the tray icon
 - [x] The tray icon shows the connected mouse's battery
-- [x] Remembered mice (`devices.json`), found by scanning the HID bus every 5
+- [x] Remembered mice (`devices.json`), found by scanning the HID bus every 2
       seconds
 - [x] Low-battery and game-profile alerts on the on-screen overlay and chime
 - [x] The Attack Shark R5 Ultra's battery, read natively
@@ -115,7 +140,9 @@ the chime needs `paplay` or `aplay`. With no
 `WAYLAND_DISPLAY` or `DISPLAY` (servers, SSH sessions), or with
 `OPENMOUSE_BRIDGE_HEADLESS=1` / `--headless`, Bridge skips the window and serves
 its HTTP API, HID, and game profiles headless (Ctrl-C stops it). Startup at
-login writes `~/.config/autostart/io.openmouse.bridge.desktop`.
+login writes `~/.config/autostart/io.openmouse.bridge.desktop`. The window loads
+only the primary GPU's Vulkan driver, with no OpenGL fallback; set
+`OPENMOUSE_BRIDGE_ALL_GPU_DRIVERS=1` if it fails to open.
 
 Bridge creates `config.json` in the operating system's per-user application
 configuration directory. At startup it refreshes the tracked-game catalog from
@@ -322,6 +349,12 @@ an optional desktop shortcut. It does not need administrator access. The
 portable `OpenMouse-Bridge-windows-x64.zip` remains available in build artifacts.
 
 ## Install on Linux
+
+This fork publishes no releases, so the command below installs **upstream's** build,
+without this fork's changes. To use the fork, build it with `cargo build --release`
+and put the binary next to a prepared `native-hid` folder, as the Linux job in
+`.github/workflows/release.yml` does. Bridge still needs the udev rule that
+`install-linux.sh` writes to reach the mouse without root.
 
 One-line install from the latest stable release (detects missing system
 libraries, installs them with sudo, verifies the checksum, installs a hidraw
