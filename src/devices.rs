@@ -137,6 +137,20 @@ impl DeviceStore {
         changed
     }
 
+    /// Drops every remembered "charging": a mouse's connection changed, so what
+    /// it last reported no longer holds until it is read again. Returns whether
+    /// the file should be rewritten.
+    pub fn clear_charging(&mut self) -> bool {
+        let mut changed = false;
+        for device in &mut self.devices {
+            if device.charging == Some(true) {
+                device.charging = Some(false);
+                changed = true;
+            }
+        }
+        changed
+    }
+
     /// Forgets a mouse. Returns whether the file should be rewritten.
     pub fn forget(&mut self, id: &str) -> bool {
         let before = self.devices.len();
@@ -200,6 +214,20 @@ mod tests {
             polling_rate_hz: None,
             switch_mode: None,
         }
+    }
+
+    #[test]
+    fn clearing_charging_leaves_the_rest_and_reports_a_change_once() {
+        let mut store = DeviceStore::load(temp_path("clear-charging"));
+        let mut mouse = device("Razer:Mouse", "Mouse", 1_000);
+        mouse.percent = Some(28);
+        mouse.charging = Some(true);
+        store.remember(mouse);
+
+        assert!(store.clear_charging());
+        assert_eq!(store.devices()[0].charging, Some(false));
+        assert_eq!(store.devices()[0].percent, Some(28));
+        assert!(!store.clear_charging(), "nothing left to clear");
     }
 
     #[test]

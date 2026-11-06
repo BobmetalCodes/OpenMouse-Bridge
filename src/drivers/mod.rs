@@ -126,20 +126,30 @@ fn discovered_brand(info: &hidapi::DeviceInfo) -> Option<&'static str> {
 /// Deliberately does not open any device — enumeration only — so it is safe
 /// to call while a web panel session or another driver operation runs.
 pub fn detect_mice() -> Vec<DetectedMouse> {
+    detect_mice_and_products().0
+}
+
+/// [`detect_mice`], plus the USB products of those mice. A mouse keeps its
+/// device id when it moves between its cable and its receiver if it reports the
+/// same serial both ways, but it changes product, so the products are what show
+/// that it reconnected.
+pub fn detect_mice_and_products() -> (Vec<DetectedMouse>, Vec<String>) {
     let api = match crate::hid::new_api() {
         Ok(api) => api,
         Err(error) => {
             tracing::warn!(%error, "could not enumerate HID devices");
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         }
     };
     let mut mice: Vec<DetectedMouse> = Vec::new();
+    let mut products: Vec<String> = Vec::new();
     let mut seen: Vec<(u16, u16, String)> = Vec::new();
     for info in api.device_list() {
         let vendor_id = info.vendor_id();
         let Some(brand) = discovered_brand(info) else {
             continue;
         };
+        products.push(format!("usb:{:04x}:{:04x}", vendor_id, info.product_id()));
         // One physical mouse exposes several HID interfaces (boot mouse,
         // consumer control, vendor config, ...). Dedup on the identity
         // triple so the same mouse is not listed three times.
@@ -158,7 +168,7 @@ pub fn detect_mice() -> Vec<DetectedMouse> {
             name: product_name(info.product_string().unwrap_or_default(), brand),
         });
     }
-    mice
+    (mice, products)
 }
 
 /// The stable per-mouse tail of a discovered device id: the serial number

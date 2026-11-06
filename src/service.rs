@@ -107,8 +107,18 @@ const PROFILE_DEBOUNCE: Duration = Duration::from_millis(2500);
 const BATTERY_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// How often the HID bus is listed to see which mice are plugged in. One scan
-/// is about 5 ms and opens no device, so this costs well under 0.1% of a core.
-const DEVICE_SCAN_INTERVAL: Duration = Duration::from_secs(5);
+/// is about 5 ms and opens no device, so this costs about 0.25% of a core. It
+/// sets how soon a mouse moving between its cable and receiver is noticed.
+const DEVICE_SCAN_INTERVAL: Duration = Duration::from_secs(2);
+
+/// How long to wait before each read of a mouse that just appeared, stopping at
+/// the first that answers: up to 38 seconds in all.
+const READ_AFTER_APPEARING: [Duration; 4] = [
+    Duration::from_secs(3),
+    Duration::from_secs(5),
+    Duration::from_secs(10),
+    Duration::from_secs(20),
+];
 
 /// A reading this old is shown as stale: more than two missed polls.
 const BATTERY_STALE_AFTER: Duration = Duration::from_secs(12 * 60);
@@ -1343,25 +1353,43 @@ impl BridgeService {
             let mut interval = tokio::time::interval(DEVICE_SCAN_INTERVAL);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             let mut previous: Option<HashSet<String>> = None;
+            let mut reading: Option<tokio::task::JoinHandle<()>> = None;
             loop {
                 interval.tick().await;
-                let detected = tokio::task::spawn_blocking(drivers::detect_mice)
-                    .await
-                    .unwrap_or_default();
+                let (detected, products) =
+                    tokio::task::spawn_blocking(drivers::detect_mice_and_products)
+                        .await
+                        .unwrap_or_default();
                 let ids: HashSet<String> = detected
                     .iter()
                     .map(|mouse| mouse.device_id.clone())
+                    .chain(products)
                     .collect();
-                let appeared = previous
-                    .as_ref()
-                    .is_some_and(|before| ids.iter().any(|id| !before.contains(id)));
+                let changed = previous.as_ref().is_some_and(|before| *before != ids);
                 {
                     let mut state = service.inner.write().await;
+                    if changed {
+                        // A cable that came out ended any charging, and one that
+                        // went in is confirmed by the read below.
+                        for entry in state.battery.values_mut() {
+                            entry.charging = false;
+                        }
+                        if state.known.clear_charging() {
+                            save_known(&mut state.known);
+                        }
+                    }
                     remember_detected(&mut state.known, &detected);
                     state.detected = Some(detected);
                 }
-                if appeared {
-                    tokio::spawn(poll_batteries(service.clone()));
+                if changed {
+                    // Reads waiting on the old connection no longer apply, and any
+                    // mouse still here needs its charging read again.
+                    if let Some(earlier) = reading.take() {
+                        earlier.abort();
+                    }
+                    if !ids.is_empty() {
+                        reading = Some(tokio::spawn(read_after_appearing(service.clone())));
+                    }
                 }
                 previous = Some(ids);
             }
@@ -1716,16 +1744,30 @@ impl Drop for PollGuard {
 }
 
 /// One battery poll at a time: a scan-triggered poll skips when the timed one
-/// is already running, and the reverse.
-async fn poll_batteries(service: BridgeService) {
+/// is already running, and the reverse. Returns whether every mouse answered; a
+/// skipped poll did not ask, so it returns false.
+async fn poll_batteries(service: BridgeService) -> bool {
     if service.battery_polling.swap(true, Ordering::AcqRel) {
-        return;
+        return false;
     }
     let _guard = PollGuard(Arc::clone(&service.battery_polling));
-    poll_batteries_once(service).await;
+    poll_batteries_once(service).await
 }
 
-async fn poll_batteries_once(service: BridgeService) {
+/// Reads a mouse that just appeared, after giving it a moment to start up. The
+/// read is retried until it answers, because a wireless mouse takes a while to
+/// link to its receiver and answers with a timeout until it has.
+async fn read_after_appearing(service: BridgeService) {
+    for delay in READ_AFTER_APPEARING {
+        tokio::time::sleep(delay).await;
+        if poll_batteries(service.clone()).await {
+            return;
+        }
+    }
+}
+
+/// Whether every mouse answered, or there was nothing to ask.
+async fn poll_batteries_once(service: BridgeService) -> bool {
     let profiled = profile_devices(&service.inner.read().await.config);
     let discovered = tokio::task::spawn_blocking(drivers::detect_mice)
         .await
@@ -1739,8 +1781,10 @@ async fn poll_batteries_once(service: BridgeService) {
         remember_detected(&mut state.known, &discovered);
     }
     if crate::hid::client_session_active() {
-        return;
+        // The control panel has the mouse, and reports the battery itself.
+        return true;
     }
+    let mut all_answered = true;
     for (device_id, device_name) in devices {
         let id = device_id.clone();
         let outcome = tokio::task::spawn_blocking(move || crate::drivers::read_status(&id)).await;
@@ -1784,13 +1828,16 @@ async fn poll_batteries_once(service: BridgeService) {
                 tracing::debug!(%device_id, "No native battery reader for this device");
             }
             Ok(Err(error)) => {
+                all_answered = false;
                 tracing::debug!(%error, %device_id, "Could not read the mouse battery");
             }
             Err(error) => {
+                all_answered = false;
                 tracing::warn!(%error, "The battery reader stopped unexpectedly");
             }
         }
     }
+    all_answered
 }
 
 /// The device id the web panel would use for the same physical mouse:
