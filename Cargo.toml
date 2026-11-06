@@ -109,3 +109,6 @@ strip = true
 # Keep GPUI 0.3.9; correct source-over alpha in its macOS Metal compositor.
 # Same patch OpenMouse Desktop carries (vendored from there).
 gpui-pre-apple = { path = "vendor/gpui-pre-apple" }
+# Refuse XDG activation tokens: taking one Bridge cannot use leaves GNOME showing a
+# busy cursor over the shell until it times out. See dbus_interface.rs.
+ksni = { path = "vendor/ksni" }
