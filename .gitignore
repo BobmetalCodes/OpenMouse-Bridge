@@ -1,4 +1,5 @@
 /target
 native-hid/node_modules
+native-hid/node
 .DS_Store
 __pycache__/

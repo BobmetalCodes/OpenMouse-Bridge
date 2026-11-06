@@ -181,9 +181,10 @@ jobs:
       - name: Prepare native-hid (deps + bundled Node.js runtime)
         run: |
           set -euo pipefail
-          # Trim node-hid's non-Linux prebuilt bindings.
+          # Trim node-hid's non-Linux prebuilt bindings. It loads the hidraw
+          # binding on Linux.
           find native-hid/node_modules/node-hid/prebuilds -mindepth 1 -maxdepth 1 -type d \
-            ! -name HID-linux-x64 -exec rm -rf {} +
+            ! -name HID-linux-x64 ! -name HID_hidraw-linux-x64 -exec rm -rf {} +
           curl -fsSL "https://nodejs.org/dist/$NATIVE_HID_NODE_VERSION/node-$NATIVE_HID_NODE_VERSION-linux-x64.tar.xz" | tar -xJ
           mkdir -p native-hid/node/bin
           cp "node-$NATIVE_HID_NODE_VERSION-linux-x64/bin/node" native-hid/node/bin/node
