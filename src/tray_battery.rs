@@ -37,14 +37,14 @@ pub struct TrayBattery {
     pub style: TrayBatteryStyle,
 }
 
-/// The battery the tray shows: a fresh reading if there is one, else the first
-/// remembered one, drawn as last known.
+/// The battery the tray shows: the most recent reading, drawn as last known if
+/// it has gone stale. Newest rather than first, because a mouse that is plugged
+/// in reports under a new id and its wireless reading stays fresh for a while.
 pub fn select(snapshot: &BridgeSnapshot) -> Option<&DeviceBattery> {
     snapshot
         .batteries
         .iter()
-        .find(|battery| !battery.stale)
-        .or_else(|| snapshot.batteries.first())
+        .min_by_key(|battery| battery.reported_millis_ago)
 }
 
 pub fn ink(percent: u8, charging: bool, stale: bool, threshold: u8) -> (u8, u8, u8) {
@@ -154,6 +154,7 @@ mod tests {
             percent,
             charging,
             stale,
+            reported_millis_ago: if stale { 60 * 60 * 1000 } else { 0 },
             minutes_remaining: None,
             dpi: None,
             polling_rate_hz: None,
@@ -238,6 +239,19 @@ mod tests {
                 icon(&shown).expect("an icon");
             }
         }
+    }
+
+    #[test]
+    fn plugging_a_mouse_in_shows_its_newer_wired_reading() {
+        let mut wireless = battery("Razer", 29, false, false);
+        wireless.reported_millis_ago = 90_000;
+        let wired = battery("Razer (Wired)", 29, true, false);
+        let mut snapshot = crate::gpui_shell::test_snapshot();
+        // Sorted by id, as in a real snapshot: the wireless reading comes first.
+        snapshot.batteries = vec![wireless, wired];
+        let shown = select(&snapshot).unwrap();
+        assert_eq!(shown.device_name, "Razer (Wired)");
+        assert!(shown.charging);
     }
 
     #[test]

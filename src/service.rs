@@ -603,6 +603,10 @@ pub struct DeviceBattery {
     pub percent: u8,
     pub charging: bool,
     pub stale: bool,
+    /// How long ago this was reported, to pick the newest of several readings:
+    /// one mouse reports under a different id wired and wireless.
+    #[serde(skip)]
+    pub reported_millis_ago: u128,
     /// Minutes until the battery is empty (discharging) or full (charging),
     /// from the recent trend; `None` while there is no confident estimate.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -830,6 +834,7 @@ impl BridgeService {
                     polling_rate_hz: entry.polling_rate_hz,
                     switch_mode: entry.switch_mode.clone(),
                     stale,
+                    reported_millis_ago: entry.updated_at.elapsed().as_millis(),
                 }
             })
             .collect::<Vec<_>>();
